@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using Unity.Networking.Transport;
 using UnityEngine;
 
 public enum SpecialMove
@@ -42,6 +43,10 @@ public class Chessboard : MonoBehaviour
     private SpecialMove specialMove;
     private List<Vector2Int[]> moveList = new List<Vector2Int[]>();
 
+    // Server and Client specific logic
+    private int playerCount = -1;
+    private int currentTeam = -1;
+
     private void Awake()
     {
         isWhiteTurn = true;
@@ -49,6 +54,8 @@ public class Chessboard : MonoBehaviour
         GenerateAllTiles(tileSize, TILE_COUNT_X, TILE_COUNT_Y);
         SpawnAllPieces();
         PositionAllPieces();
+
+        RegisterEvents();
     }
     private void Update()
     {
@@ -685,4 +692,54 @@ public class Chessboard : MonoBehaviour
 
         return -Vector2Int.one; // Invalid
     }
+
+    #region
+    private void RegisterEvents()
+    {
+        NetUtility.S_WELCOME += OnWelcomeServer;
+
+        NetUtility.C_WELCOME += OnWelcomeClient;
+        NetUtility.C_START_GAME += OnStartGameClient;
+    }
+    private void UnregisterEvents()
+    {
+
+    }
+
+    // Server
+    private void OnWelcomeServer(NetMessage msg, NetworkConnection cnn)
+    {
+        // Client has connected, assign a team and return the message back to the client
+        NetWelcome nw = msg as NetWelcome;
+
+        // Assign a team
+        nw.AssignedTeam = ++playerCount;
+
+        // Return back to the client
+        Server.Instance.SendToClient(cnn, nw);
+
+        // If both players have joined, start the game
+        if (playerCount == 1)
+        {
+            Server.Instance.Broadcast(new NetStartGame());
+        }
+    }
+
+    // Client
+    private void OnWelcomeClient(NetMessage msg)
+    {
+        // Receive the connection message
+        NetWelcome nw = msg as NetWelcome;
+
+        // Assign the team
+        currentTeam = nw.AssignedTeam;
+
+        Debug.Log($"My assigned team is {nw.AssignedTeam}");
+    }
+    private void OnStartGameClient(NetMessage msg)
+    {
+        // Change camera pan
+        GameUI.Instance.ChangeCamera((currentTeam == 0) ? CameraAngle.whiteTeam : CameraAngle.blackTeam);
+    }
+    #endregion
 }
